@@ -92,7 +92,7 @@ def add_host(data):
     else:
         pool = client.tm.ltm.pools.pool.load(name=pool_name, partition=partition)
 
-    if not client.tm.ltm.virtuals.virtual.exists(name=vs_name, partition=partition)
+    if not client.tm.ltm.virtuals.virtual.exists(name=vs_name, partition=partition):
         logging.info('Virtual server %s not found, creating it.', vs_name)
         logging.info('Virtual server destination: %s', vs_destination)
         virtual = client.tm.ltm.virtuals.virtual.create(

@@ -1,4 +1,5 @@
 Flask
 pytz
 python-dateutil
+f5-icontrol-rest
 f5-sdk
