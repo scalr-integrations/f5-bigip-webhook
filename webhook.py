@@ -24,7 +24,7 @@ config_file = './config_prod.json'
 logging.basicConfig(level=logging.DEBUG)
 app = Flask(__name__)
 
-# will be overridden if present in config_file
+# Configuration variables, the values will be overridden if present in config_file
 SCALR_SIGNING_KEY = ''
 BIGIP_CONFIG_VARIABLE = 'BIGIP_CONFIG'
 BIGIP_ADDRESS = ''
@@ -32,6 +32,9 @@ BIGIP_USER = ''
 BIGIP_PASS = ''
 DEFAULT_LB_METHOD = 'least-connections-member'
 DEFAULT_PARTITION = 'Common'
+# This is the expected format of the configuration global variable. partition and lb_method
+# will default to the values above (unless overridden in config_prod.json) if not specified.
+config_format = 'pool_name,instance_port,vs_name,vs_address,vs_port[,partition][,lb_method]'
 
 
 @app.route("/bigip/", methods=['POST'])
@@ -65,7 +68,7 @@ def add_host(data):
     if len(config) < 5:
         # Invalid config
         logging.warning('Invalid config received: %s', str(config))
-        abort(400, 'Invalid config passed: {}. Config format: pool_name,instance_port,vs_name,vs_address,vs_port[,partition][,lb_method]'.format(config))
+        abort(400, 'Invalid config passed: {}. Config format: {}'.format(config, config_format))
     pool_name = config[0]
     instance_port = config[1]
     vs_name  = config[2]
@@ -120,7 +123,7 @@ def delete_host(data):
     if len(config) < 5:
         # Invalid config
         logging.warning('Invalid config received: %s', str(config))
-        abort(400, 'Invalid config passed: {}. Config format: pool_name,instance_port,vs_name,vs_address,vs_port[,partition][,lb_method]'.format(config))
+        abort(400, 'Invalid config passed: {}. Config format: {}'.format(config, config_format))
     pool_name = config[0]
     instance_port = config[1]
     vs_name  = config[2]
