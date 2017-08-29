@@ -64,7 +64,7 @@ def add_host(data):
         return 'Skipped'
     lb_method = DEFAULT_LB_METHOD
     partition = DEFAULT_PARTITION
-    config = [c.strip() for c in data['BIGIP_CONFIG_VARIABLE'].split(',')]
+    config = [c.strip() for c in data[BIGIP_CONFIG_VARIABLE].split(',')]
     if len(config) < 5:
         # Invalid config
         logging.warning('Invalid config received: %s', str(config))
@@ -119,7 +119,7 @@ def delete_host(data):
         return 'Skipped'
     lb_method = DEFAULT_LB_METHOD
     partition = DEFAULT_PARTITION
-    config = [c.strip() for c in data['BIGIP_CONFIG_VARIABLE'].split(',')]
+    config = [c.strip() for c in data[BIGIP_CONFIG_VARIABLE].split(',')]
     if len(config) < 5:
         # Invalid config
         logging.warning('Invalid config received: %s', str(config))
