@@ -42,14 +42,9 @@ Note down the signing key that Scalr generated, we will need it later.
 
 #### Webhook configuration
 
-Create the production configuration file:
-```
-cp config.json config_prod.json
-```
+Edit `/etc/uwsgi.d/f5-bigip-webhook.ini` and fill in the configuration variables.
 
-Edit the `config_prod.json` file and complete it with the Scalr signing key that Scalr generated.
-
-Reload the configuration:
+Then restart uwsgi to reload the configuration:
 ```
 systemctl restart uwsgi
 ```

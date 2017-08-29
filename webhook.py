@@ -12,6 +12,7 @@ import logging
 import binascii
 import dateutil.parser
 import hmac
+import os
 
 from hashlib import sha1
 from datetime import datetime
@@ -24,17 +25,22 @@ config_file = './config_prod.json'
 logging.basicConfig(level=logging.DEBUG)
 app = Flask(__name__)
 
-# Configuration variables, the values will be overridden if present in config_file
-SCALR_SIGNING_KEY = ''
-BIGIP_CONFIG_VARIABLE = 'BIGIP_CONFIG'
-BIGIP_ADDRESS = ''
-BIGIP_USER = ''
-BIGIP_PASS = ''
-DEFAULT_LB_METHOD = 'least-connections-member'
-DEFAULT_PARTITION = 'Common'
+# Configuration variables, taken from the environment
+SCALR_SIGNING_KEY = os.getenv('SCALR_SIGNING_KEY', '')
+BIGIP_ADDRESS = os.getenv('BIGIP_ADDRESS', '')
+BIGIP_USER = os.getenv('BIGIP_USER', '')
+BIGIP_PASS = os.getenv('BIGIP_PASS', '')
+# Optional config
+BIGIP_CONFIG_VARIABLE = os.getenv('BIGIP_CONFIG_VARIABLE', 'BIGIP_CONFIG')
+DEFAULT_LB_METHOD = os.getenv('DEFAULT_LB_METHOD', 'least-connections-member')
+DEFAULT_PARTITION = os.getenv('DEFAULT_PARTITION', 'Common')
+
 # This is the expected format of the configuration global variable. partition and lb_method
 # will default to the values above (unless overridden in config_prod.json) if not specified.
 config_format = 'pool_name,instance_port,vs_name,vs_address,vs_port[,partition][,lb_method]'
+
+# BIG-IP API client
+client = ManagementRoot(BIGIP_ADDRESS, BIGIP_USER, BIGIP_PASS)
 
 
 @app.route("/bigip/", methods=['POST'])
@@ -174,22 +180,6 @@ def validate_request(request):
     delta = abs((now - date).total_seconds())
     return delta < 300
 
-
-def load_config(filename):
-    global client
-    with open(filename) as f:
-        options = json.loads(f.read())
-        for key in options:
-            if key in ['BIGIP_ADDRESS', 'BIGIP_USER', 'BIGIP_PASS', 'BIGIP_CONFIG_VARIABLE', 'DEFAULT_PARTITION', 'DEFAULT_LB_METHOD']:
-                logging.info('Loaded config: {}'.format(key))
-                globals()[key] = options[key]
-            elif key in ['SCALR_SIGNING_KEY']:
-                logging.info('Loaded config: {}'.format(key))
-                globals()[key] = options[key].encode('ascii')
-    client = ManagementRoot(BIGIP_ADDRESS, BIGIP_USER, BIGIP_PASS)
-
-
-load_config(config_file)
 
 if __name__ == '__main__':
     app.run(debug=False, host='0.0.0.0')
