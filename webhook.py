@@ -35,6 +35,11 @@ BIGIP_CONFIG_VARIABLE = os.getenv('BIGIP_CONFIG_VARIABLE', 'BIGIP_CONFIG')
 DEFAULT_LB_METHOD = os.getenv('DEFAULT_LB_METHOD', 'least-connections-member')
 DEFAULT_PARTITION = os.getenv('DEFAULT_PARTITION', 'Common')
 
+for var in ['SCALR_SIGNING_KEY', 'BIGIP_ADDRESS', 'BIGIP_USER', 'BIGIP_PASS',
+            'BIGIP_CONFIG_VARIABLE', 'DEFAULT_LB_METHOD', 'DEFAULT_PARTITION']:
+    logging.info('Config: %s = %s', var, globals()[var])
+
+
 # This is the expected format of the configuration global variable. partition and lb_method
 # will default to the values above (unless overridden in config_prod.json) if not specified.
 config_format = 'pool_name,instance_port,vs_name,vs_address,vs_port[,partition][,lb_method]'
