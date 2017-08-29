@@ -35,10 +35,21 @@ this behaviour.
 
 #### Scalr webhook setup
 
-Log into Scalr at the global scope, and click on Webhooks in the main menu.
+Log into Scalr at the scope you want to use this webhook in, and click on Webhooks in the main menu.
 In the Endpoints section, create a new endpoint with URL: `http://<server-ip>:5010/bigip/`
 
 Note down the signing key that Scalr generated, we will need it later.
+
+In the Webhooks section, create a new Webhook with the following settings:
+
+ - Name: BIG-IP integration
+ - Endpoints: the endpoint you just created
+ - Events: HostUp, BeforeHostTerminate, HostDown
+ - Farms: All farms
+ - Timeout: 10 sec
+ - Max. delivery attempts: 3
+
+and click on the save icon to save the webhook.
 
 #### Webhook configuration
 
@@ -60,3 +71,24 @@ curl -XPOST http://localhost:5010/bigip/
 
 You should get a 403 error, because our request was not signed. If that is not the case, check for errors in the uwsgi logs.
 
+Next you should configure a Farm Role to be registered in a load balancing pool.
+Go into a Farm Role's configuration, and click on Global Variables. Create a new global variable named `BIGIP_CONFIG`.
+Click on the lock button to prevent it from being changed at a lower scope. The value should contain the following settings,
+in this order, separated by commas:
+
+ - pool name: the name of the load balancing pool
+ - instance port: The port that the traffic should be forwarded to on the instances
+ - virtual server name: the name of the virtual server
+ - virtual server address: The address the virtual server should listen on
+ - virtual server port: The port the virtual server should listen on
+ - partition: OPTIONAL, defaults to `Common`
+ - load balancing method: OPTIONAL, defaults to `least-connections-member`
+
+Example value:
+```
+my_app_pool,8000,my_app_virtual_server,10.0.0.10,80
+```
+
+When the first instance is started, the webhook will create the virtual server and the pool in the BIG-IP system. 
+As additional instances come up or go down, they will be added to or removed from the pool.
+If no servers are left in the pool, the virtual server and the pool will be deleted.
