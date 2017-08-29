@@ -12,5 +12,5 @@ RUN pip install -r /requirements.txt
 
 ADD . /opt/f5-bigip-webhook
 
-CMD ["/usr/bin/uwsgi", "--ini", "/opt/example-hostname-webhook/uwsgi.ini"]
+CMD ["/usr/bin/uwsgi", "--ini", "/opt/f5-bigip-webhook/uwsgi.ini"]
 
