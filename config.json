@@ -1,3 +1,6 @@
 {
-    "SCALR_SIGNING_KEY": "scalr signing key"
+    "SCALR_SIGNING_KEY": "scalr signing key",
+    "BIGIP_ADDRESS": "bigip.local",
+    "BIGIP_USER": "admin",
+    "BIGIP_PASS": "password"
 }

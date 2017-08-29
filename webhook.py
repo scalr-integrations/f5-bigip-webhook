@@ -16,6 +16,7 @@ import hmac
 from hashlib import sha1
 from datetime import datetime
 
+from f5.bigip import ManagementRoot
 
 
 config_file = './config_prod.json'
@@ -25,7 +26,12 @@ app = Flask(__name__)
 
 # will be overridden if present in config_file
 SCALR_SIGNING_KEY = ''
-F5_CONFIG_VARIABLE = 'F5_CONFIG'
+BIGIP_CONFIG_VARIABLE = 'BIGIP_CONFIG'
+BIGIP_ADDRESS = ''
+BIGIP_USER = ''
+BIGIP_PASS = ''
+DEFAULT_LB_METHOD = 'least-connections-member'
+DEFAULT_PARTITION = 'Common'
 
 
 @app.route("/bigip/", methods=['POST'])
@@ -38,28 +44,115 @@ def webhook_listener():
         logging.info('Invalid request received')
         abort(404)
 
+    logging.info('Received %s event', data['eventName'])
+
     if data['eventName'] == 'HostUp':
         return add_host(data['data'])
     elif data['eventName'] in ['BeforeHostTerminate', 'HostDown']:
         return delete_host(data['data'])
     else:
-        logging.info('Received request for unhandled event %s', data['eventName'])
+        logging.warning('Received request for unhandled event %s', data['eventName'])
         return ''
 
 
 def add_host(data):
-    if not F5_CONFIG_VARIABLE in data:
+    if not BIGIP_CONFIG_VARIABLE in data:
+        logging.info('This server should not be added in a BIG-IP pool, skipping.')
         return 'Skipped'
-    config = data['F5_CONFIG_VARIABLE']
-    # TODO
+    lb_method = DEFAULT_LB_METHOD
+    partition = DEFAULT_PARTITION
+    config = [c.strip() for c in data['BIGIP_CONFIG_VARIABLE'].split(',')]
+    if len(config) < 5:
+        # Invalid config
+        logging.warning('Invalid config received: %s', str(config))
+        abort(400, 'Invalid config passed: {}. Config format: pool_name,instance_port,vs_name,vs_address,vs_port[,partition][,lb_method]'.format(config))
+    pool_name = config[0]
+    instance_port = config[1]
+    vs_name  = config[2]
+    vs_address = config[3]
+    vs_port = config[4]
+    if len(config) > 5:
+        partition = config[5]
+    if len(config) > 6:
+        lb_method = config[6]
+
+    vs_destination = '%s:%s' % (vs_address, vs_port)
+
+    # Create pool and virtual server if they don't exist
+    if not client.tm.ltm.pools.pool.exists(name=pool_name, partition=partition):
+        logging.info('Pool %s not found, creating it.', pool_name)
+        pool = client.tm.ltm.pools.pool.create(
+            name=pool_name,
+            partition=partition,
+            description='Scalr-managed pool',
+            loadBalancingMode=lb_method)
+    else:
+        pool = client.tm.ltm.pools.pool.load(name=pool_name, partition=partition)
+
+    if not client.tm.ltm.virtuals.virtual.exists(name=vs_name, partition=partition)
+        logging.info('Virtual server %s not found, creating it.', vs_name)
+        logging.info('Virtual server destination: %s', vs_destination)
+        virtual = client.tm.ltm.virtuals.virtual.create(
+            name=vs_name,
+            partition=partition,
+            description='Scalr-manages virtual server',
+            destination=vs_destination,
+            mask='255.255.255.255',
+            ipProtocol='tcp',
+            pool=pool_name)
+
+    # Add server to pool
+    server_ip = data['SCALR_INTERNAL_IP']
+    server_name = '%s:%s' % (server_ip, instance_port)
+    logging.info('Adding member %s in pool %s', server_name, pool_name)
+    member = pool.members_s.members.create(partition=partition, name=server_name)
+
     return 'Ok'
 
 
 def delete_host(data):
-    if not F5_CONFIG_VARIABLE in data:
+    if not BIGIP_CONFIG_VARIABLE in data:
+        logging.info('This server should not be removed from a BIG-IP pool, skipping.')
         return 'Skipped'
-    config = data['F5_CONFIG_VARIABLE']
-    # TODO
+    lb_method = DEFAULT_LB_METHOD
+    partition = DEFAULT_PARTITION
+    config = [c.strip() for c in data['BIGIP_CONFIG_VARIABLE'].split(',')]
+    if len(config) < 5:
+        # Invalid config
+        logging.warning('Invalid config received: %s', str(config))
+        abort(400, 'Invalid config passed: {}. Config format: pool_name,instance_port,vs_name,vs_address,vs_port[,partition][,lb_method]'.format(config))
+    pool_name = config[0]
+    instance_port = config[1]
+    vs_name  = config[2]
+    vs_address = config[3]
+    vs_port = config[4]
+    if len(config) > 5:
+        partition = config[5]
+    if len(config) > 6:
+        lb_method = config[6]
+
+    if not client.tm.ltm.pools.pool.exists(name=pool_name, partition=partition):
+        logging.info('Pool %s doesn\'t exist, has already been deleted', pool_name)
+        return 'Nothing to delete'
+    pool = client.tm.ltm.pools.pool.load(name=pool_name, partition=partition)
+
+    server_ip = data['SCALR_INTERNAL_IP']
+    server_name = '%s:%s' % (server_ip, instance_port)
+    if pool.members_s.members.exists(partition=partition, name=server_name):
+        logging.info('Removing %s from pool %s', server_name, pool_name)
+        member = pool.members_s.members.load(partition=partition, name=server_name)
+        member.delete()
+
+    # Delete virtual server and pool if no members are left
+    members = pool.members_s.get_collection()
+    if len(members) == 0:
+        logging.info('Pool is now empty, deleting virtual server and pool')
+        if client.tm.ltm.virtuals.virtual.exists(name=vs_name, partition=partition):
+            logging.info('Deleting virtual server %s', vs_name)
+            virtual_server = client.tm.ltm.virtuals.virtual.load(name=vs_name, partition=partition)
+            virtual_server.delete()
+        pool.delete()
+
     return 'Ok'
 
 
@@ -80,15 +173,17 @@ def validate_request(request):
 
 
 def load_config(filename):
+    global client
     with open(filename) as f:
         options = json.loads(f.read())
         for key in options:
-            if key in ['F5_CONFIG_VARIABLE']:
+            if key in ['BIGIP_ADDRESS', 'BIGIP_USER', 'BIGIP_PASS', 'BIGIP_CONFIG_VARIABLE', 'DEFAULT_PARTITION', 'DEFAULT_LB_METHOD']:
                 logging.info('Loaded config: {}'.format(key))
                 globals()[key] = options[key]
             elif key in ['SCALR_SIGNING_KEY']:
                 logging.info('Loaded config: {}'.format(key))
                 globals()[key] = options[key].encode('ascii')
+    client = ManagementRoot(BIGIP_ADDRESS, BIGIP_USER, BIGIP_PASS)
 
 
 load_config(config_file)
