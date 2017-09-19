@@ -28,6 +28,7 @@ app = Flask(__name__)
 # Configuration variables, taken from the environment
 SCALR_SIGNING_KEY = os.getenv('SCALR_SIGNING_KEY', '')
 BIGIP_ADDRESS = os.getenv('BIGIP_ADDRESS', '')
+BIGIP_PORT = os.getenv('BIGIP_PORT', '443')
 BIGIP_USER = os.getenv('BIGIP_USER', '')
 BIGIP_PASS = os.getenv('BIGIP_PASS', '')
 # Optional config
@@ -35,9 +36,9 @@ BIGIP_CONFIG_VARIABLE = os.getenv('BIGIP_CONFIG_VARIABLE', 'BIGIP_CONFIG')
 DEFAULT_LB_METHOD = os.getenv('DEFAULT_LB_METHOD', 'least-connections-member')
 DEFAULT_PARTITION = os.getenv('DEFAULT_PARTITION', 'Common')
 
-for var in ['SCALR_SIGNING_KEY', 'BIGIP_ADDRESS', 'BIGIP_USER', 'BIGIP_PASS',
+for var in ['SCALR_SIGNING_KEY', 'BIGIP_ADDRESS', 'BIGIP_PORT', 'BIGIP_USER', 'BIGIP_PASS',
             'BIGIP_CONFIG_VARIABLE', 'DEFAULT_LB_METHOD', 'DEFAULT_PARTITION']:
-    logging.info('Config: %s = %s', var, globals()[var])
+    logging.info('Config: %s = %s', var, globals()[var] if not 'PASS' in var else '*' * len(globals()[var]))
 
 
 # This is the expected format of the configuration global variable. partition and lb_method
@@ -45,7 +46,7 @@ for var in ['SCALR_SIGNING_KEY', 'BIGIP_ADDRESS', 'BIGIP_USER', 'BIGIP_PASS',
 config_format = 'pool_name,instance_port,vs_name,vs_address,vs_port[,partition][,lb_method]'
 
 # BIG-IP API client
-client = ManagementRoot(BIGIP_ADDRESS, BIGIP_USER, BIGIP_PASS)
+client = ManagementRoot(BIGIP_ADDRESS, BIGIP_USER, BIGIP_PASS, port=BIGIP_PORT)
 
 
 @app.route("/bigip/", methods=['POST'])
