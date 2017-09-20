@@ -84,7 +84,6 @@ in this order, separated by commas:
  - upstream ip: OPTIONAL, one of: `public`, `private`, `auto`. The IP to register in the load balancing pool. `auto`
    default to the public IP, but fallbacks to the private IP if the server has no public IP. The default is `auto`.
  - partition: OPTIONAL, defaults to `Common`.
-   variable.
  - load balancing method: OPTIONAL, defaults to `least-connections-member`.
 
 Example values:
