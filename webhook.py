@@ -31,7 +31,7 @@ BIGIP_USER = os.getenv('BIGIP_USER', '')
 BIGIP_PASS = os.getenv('BIGIP_PASS', '')
 # Optional config
 BIGIP_CONFIG_VARIABLE = os.getenv('BIGIP_CONFIG_VARIABLE', 'BIGIP_CONFIG')
-DEFAULT_UPSTREAM_IP = 'auto'
+DEFAULT_UPSTREAM_IP = os.getenv('DEFAULT_UPSTREAM_IP', 'auto')
 DEFAULT_LB_METHOD = os.getenv('DEFAULT_LB_METHOD', 'least-connections-member')
 DEFAULT_PARTITION = os.getenv('DEFAULT_PARTITION', 'Common')
 

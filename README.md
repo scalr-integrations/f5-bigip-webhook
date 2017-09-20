@@ -81,14 +81,19 @@ in this order, separated by commas:
  - virtual server name: the name of the virtual server
  - virtual server address: The address the virtual server should listen on
  - virtual server port: The port the virtual server should listen on
- - partition: OPTIONAL, defaults to `Common`
- - load balancing method: OPTIONAL, defaults to `least-connections-member`
+ - upstream ip: OPTIONAL, one of: `public`, `private`, `auto`. The IP to register in the load balancing pool. `auto`
+   default to the public IP, but fallbacks to the private IP if the server has no public IP. The default is `auto`.
+ - partition: OPTIONAL, defaults to `Common`.
+   variable.
+ - load balancing method: OPTIONAL, defaults to `least-connections-member`.
 
-Example value:
+Example values:
 ```
 my_app_pool,8000,my_app_virtual_server,10.0.0.10,80
+test_pool, 8443, test_virtual_server, 10.0.0.11, 8000, auto, PartitionName, round-robin
 ```
 
 When the first instance is started, the webhook will create the virtual server and the pool in the BIG-IP system. 
+The virtual server is working in TCP mode.
 As additional instances come up or go down, they will be added to or removed from the pool.
 If no servers are left in the pool, the virtual server and the pool will be deleted.
