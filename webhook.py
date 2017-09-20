@@ -5,8 +5,6 @@ from flask import request
 from flask import abort
 
 import pytz
-import string
-import random
 import json
 import logging
 import binascii
@@ -39,7 +37,7 @@ DEFAULT_PARTITION = os.getenv('DEFAULT_PARTITION', 'Common')
 
 for var in ['SCALR_SIGNING_KEY', 'BIGIP_ADDRESS', 'BIGIP_PORT', 'BIGIP_USER', 'BIGIP_PASS',
             'BIGIP_CONFIG_VARIABLE', 'DEFAULT_LB_METHOD', 'DEFAULT_PARTITION']:
-    logging.info('Config: %s = %s', var, globals()[var] if not 'PASS' in var else '*' * len(globals()[var]))
+    logging.info('Config: %s = %s', var, globals()[var] if 'PASS' not in var else '*' * len(globals()[var]))
 
 
 # This is the expected format of the configuration global variable. partition and lb_method
@@ -53,7 +51,7 @@ client = ManagementRoot(BIGIP_ADDRESS, BIGIP_USER, BIGIP_PASS, port=BIGIP_PORT)
 
 @app.route("/bigip/", methods=['POST'])
 def webhook_listener():
-    if not validate_request(request):
+    if not validate_request():
         abort(403)
 
     data = json.loads(request.data)
@@ -83,11 +81,14 @@ def parse_config_variable(data):
         abort(400, 'Invalid config passed: {}. Config format: {}'.format(config, config_format))
     pool_name = config[0]
     instance_port = config[1]
-    vs_name  = config[2]
+    vs_name = config[2]
     vs_address = config[3]
     vs_port = config[4]
     if len(config) > 5:
         upstream_ip = config[5]
+        if upstream_ip.lower() not in ['public', 'external', 'private', 'internal', 'auto']:
+            abort(400, 'Invalid upstream_ip value. Got {}, expected one of: '
+                       'public, external, private, internal, auto'.format(upstream_ip))
     if len(config) > 6:
         partition = config[6]
     if len(config) > 7:
@@ -102,12 +103,10 @@ def get_upstream_ip(upstream_ip, data):
         return data['SCALR_INTERNAL_IP']
     elif upstream_ip.lower() == 'auto':
         return data['SCALR_EXTERNAL_IP'] or data['SCALR_INTERNAL_IP']
-    else:
-        abort(400, 'Invalid upstream_ip value. Got {}, expected one of: public, external, private, internal, auto'.format(upstream_ip))
 
 
 def add_host(data):
-    if not BIGIP_CONFIG_VARIABLE in data:
+    if BIGIP_CONFIG_VARIABLE not in data:
         logging.info('This server should not be added in a BIG-IP pool, skipping.')
         return 'Skipped'
 
@@ -130,7 +129,7 @@ def add_host(data):
     if not client.tm.ltm.virtuals.virtual.exists(name=vs_name, partition=partition):
         logging.info('Virtual server %s not found, creating it.', vs_name)
         logging.info('Virtual server destination: %s', vs_destination)
-        virtual = client.tm.ltm.virtuals.virtual.create(
+        client.tm.ltm.virtuals.virtual.create(
             name=vs_name,
             partition=partition,
             description='Scalr-managed virtual server',
@@ -146,13 +145,13 @@ def add_host(data):
     server_ip = get_upstream_ip(upstream_ip, data)
     server_name = '%s:%s' % (server_ip, instance_port)
     logging.info('Adding member %s in pool %s', server_name, pool_name)
-    member = pool.members_s.members.create(partition=partition, name=server_name)
+    pool.members_s.members.create(partition=partition, name=server_name)
     # TODO: in case of failure, check if it is because the server already exists
     return 'Ok'
 
 
 def delete_host(data):
-    if not BIGIP_CONFIG_VARIABLE in data:
+    if BIGIP_CONFIG_VARIABLE not in data:
         logging.info('This server should not be removed from a BIG-IP pool, skipping.')
         return 'Skipped'
     
@@ -188,7 +187,7 @@ def delete_host(data):
     return 'Ok'
 
 
-def validate_request(request):
+def validate_request():
     if 'X-Signature' not in request.headers or 'Date' not in request.headers:
         logging.debug('Missing signature headers')
         return False
