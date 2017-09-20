@@ -33,6 +33,7 @@ BIGIP_USER = os.getenv('BIGIP_USER', '')
 BIGIP_PASS = os.getenv('BIGIP_PASS', '')
 # Optional config
 BIGIP_CONFIG_VARIABLE = os.getenv('BIGIP_CONFIG_VARIABLE', 'BIGIP_CONFIG')
+DEFAULT_UPSTREAM_IP = 'auto'
 DEFAULT_LB_METHOD = os.getenv('DEFAULT_LB_METHOD', 'least-connections-member')
 DEFAULT_PARTITION = os.getenv('DEFAULT_PARTITION', 'Common')
 
@@ -43,7 +44,8 @@ for var in ['SCALR_SIGNING_KEY', 'BIGIP_ADDRESS', 'BIGIP_PORT', 'BIGIP_USER', 'B
 
 # This is the expected format of the configuration global variable. partition and lb_method
 # will default to the values above (unless overridden in config_prod.json) if not specified.
-config_format = 'pool_name,instance_port,vs_name,vs_address,vs_port[,partition][,lb_method]'
+# upstream_ip can be public, private, or auto. Auto = public or private if there is no public ip
+config_format = 'pool_name,instance_port,vs_name,vs_address,vs_port[,upstream_ip][,partition][,lb_method]'
 
 # BIG-IP API client
 client = ManagementRoot(BIGIP_ADDRESS, BIGIP_USER, BIGIP_PASS, port=BIGIP_PORT)
@@ -73,6 +75,7 @@ def webhook_listener():
 def parse_config_variable(data):
     lb_method = DEFAULT_LB_METHOD
     partition = DEFAULT_PARTITION
+    upstream_ip = DEFAULT_UPSTREAM_IP
     config = [c.strip() for c in data[BIGIP_CONFIG_VARIABLE].split(',')]
     if len(config) < 5:
         # Invalid config
@@ -84,10 +87,23 @@ def parse_config_variable(data):
     vs_address = config[3]
     vs_port = config[4]
     if len(config) > 5:
-        partition = config[5]
+        upstream_ip = config[5]
     if len(config) > 6:
-        lb_method = config[6]
-    return pool_name, instance_port, vs_name, vs_address, vs_port, partition, lb_method
+        partition = config[6]
+    if len(config) > 7:
+        lb_method = config[7]
+    return pool_name, instance_port, vs_name, vs_address, vs_port, upstream_ip, partition, lb_method
+
+
+def get_upstream_ip(upstream_ip, data):
+    if upstream_ip.lower() == 'public' or upstream_ip.lower() == 'external':
+        return data['SCALR_EXTERNAL_IP']
+    elif upstream_ip.lower() == 'private' or upstream_ip.lower() == 'internal':
+        return data['SCALR_INTERNAL_IP']
+    elif upstream_ip.lower() == 'auto':
+        return data['SCALR_EXTERNAL_IP'] or data['SCALR_INTERNAL_IP']
+    else:
+        abort(400, 'Invalid upstream_ip value. Got {}, expected one of: public, external, private, internal, auto'.format(upstream_ip))
 
 
 def add_host(data):
@@ -95,7 +111,7 @@ def add_host(data):
         logging.info('This server should not be added in a BIG-IP pool, skipping.')
         return 'Skipped'
 
-    pool_name, instance_port, vs_name, vs_address, vs_port, partition, lb_method = parse_config_variable(data)
+    pool_name, instance_port, vs_name, vs_address, vs_port, upstream_ip, partition, lb_method = parse_config_variable(data)
 
     vs_destination = '%s:%s' % (vs_address, vs_port)
 
@@ -127,7 +143,7 @@ def add_host(data):
         logging.info('Virtual server %s already exists, reusing it', vs_name)
 
     # Add server to pool
-    server_ip = data['SCALR_INTERNAL_IP']
+    server_ip = get_upstream_ip(upstream_ip, data)
     server_name = '%s:%s' % (server_ip, instance_port)
     logging.info('Adding member %s in pool %s', server_name, pool_name)
     member = pool.members_s.members.create(partition=partition, name=server_name)
@@ -140,14 +156,14 @@ def delete_host(data):
         logging.info('This server should not be removed from a BIG-IP pool, skipping.')
         return 'Skipped'
     
-    pool_name, instance_port, vs_name, vs_address, vs_port, partition, lb_method = parse_config_variable(data)
+    pool_name, instance_port, vs_name, vs_address, vs_port, upstream_ip, partition, lb_method = parse_config_variable(data)
 
     if not client.tm.ltm.pools.pool.exists(name=pool_name, partition=partition):
         logging.info('Pool %s doesn\'t exist, has already been deleted', pool_name)
         return 'Nothing to delete'
     pool = client.tm.ltm.pools.pool.load(name=pool_name, partition=partition)
 
-    server_ip = data['SCALR_INTERNAL_IP']
+    server_ip = get_upstream_ip(upstream_ip, data)
     server_name = '%s:%s' % (server_ip, instance_port)
     if pool.members_s.members.exists(partition=partition, name=server_name):
         logging.info('Removing %s from pool %s', server_name, pool_name)
@@ -164,7 +180,7 @@ def delete_host(data):
             logging.info('Deleting virtual server %s', vs_name)
             virtual_server = client.tm.ltm.virtuals.virtual.load(name=vs_name, partition=partition)
             virtual_server.delete()
-        logging.info('Deleting pool')
+        logging.info('Deleting pool %s', pool_name)
         pool.delete()
     else:
         logging.info('%d members remaining in pool, not deleting', len(members))
