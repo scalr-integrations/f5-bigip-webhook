@@ -18,8 +18,6 @@ from datetime import datetime
 from f5.bigip import ManagementRoot
 
 
-config_file = './config_prod.json'
-
 logging.basicConfig(level=logging.INFO)
 app = Flask(__name__)
 
